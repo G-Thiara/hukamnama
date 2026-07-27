@@ -8,7 +8,7 @@ const SYNTHESIS_PROMPT = (translations, writer, raag) =>
 Here are the English translations of the verses:
 ${translations}
 
-Write a concise 2-sentence synthesis of the core message of this Hukamnama for someone with no or only cursory knowledge of Sikhism or Gurbani. Follow these rules strictly:
+Write exactly 2 sentences — no more, no less. No headings, no markdown, no bullet points — plain text only. Synthesize the core message of this Hukamnama for someone with no or only cursory knowledge of Sikhism or Gurbani. Follow these rules strictly:
 - Synthesize across the whole shabad, not any single line
 - If the shabad has an arc — a movement from one state to another — capture that journey, not just the conclusion
 - Be true to the spirit of the meaning — not a literal translation, not an inference, but the essence of what the shabad is pointing to
@@ -70,7 +70,11 @@ export default async function handler(req, res) {
         max_tokens: 180,
         messages: [{ role: 'user', content: SYNTHESIS_PROMPT(translations, writer, raag) }],
       });
-      const candidate = msg.content[0].text.trim();
+      const candidate = msg.content[0].text
+        .replace(/^#+\s+.*/gm, '')  // strip markdown headings
+        .replace(/\*\*/g, '')        // strip bold
+        .replace(/\n+/g, ' ')        // collapse newlines
+        .trim();
 
       const review = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
