@@ -90,8 +90,8 @@ export default async function handler(req, res) {
       }
     }
 
-    cache = { date: today, data: { synthesis } };
-    res.json({ synthesis });
+    cache = { date: today, data: { synthesis, hukamnama: hukamData } };
+    res.json({ synthesis, hukamnama: hukamData });
 
   } catch (err) {
     console.error(err.message);

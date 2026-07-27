@@ -399,14 +399,18 @@
 
     async function init() {
       try {
-        const [hukamRes, synthRes] = await Promise.all([
-          fetch(API),
-          fetch('/api/synthesis').catch(() => null),
-        ]);
-        if (!hukamRes.ok) throw new Error(`HTTP ${hukamRes.status}`);
-        const data = await hukamRes.json();
-        const synthesis = synthRes?.ok ? (await synthRes.json()).synthesis : null;
-        renderHukamnama(data, synthesis);
+        // Try the single API endpoint first (returns both hukamnama + synthesis)
+        const synthRes = await fetch('/api/synthesis').catch(() => null);
+        if (synthRes?.ok) {
+          const { synthesis, hukamnama } = await synthRes.json();
+          renderHukamnama(hukamnama, synthesis);
+          return;
+        }
+        // Fallback: fetch hukamnama directly, no synthesis
+        const res = await fetch(API);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderHukamnama(data, null);
       } catch (err) {
         renderError(err.message || 'Network error');
       }
