@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/synthesis", "destination": "/api/synthesis.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
