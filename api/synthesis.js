@@ -43,14 +43,17 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
-    const today = new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
+    const now = new Date();
+    const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+    const ist = new Date(istMs);
+    const year  = ist.getUTCFullYear();
+    const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+    const day   = String(ist.getUTCDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
 
     if (cache.date === today && cache.data) {
       return res.json(cache.data);
     }
-
-    const istDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const [year, month, day] = istDate.split('-');
     const hukamRes = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${year}/${month}/${day}`);
     const hukamData = await hukamRes.json();
 
