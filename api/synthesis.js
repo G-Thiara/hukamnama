@@ -49,7 +49,9 @@ export default async function handler(req, res) {
       return res.json(cache.data);
     }
 
-    const hukamRes = await fetch(HUKAMNAMA_API);
+    const istDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const [year, month, day] = istDate.split('-');
+    const hukamRes = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${year}/${month}/${day}`);
     const hukamData = await hukamRes.json();
 
     const lines = (hukamData.hukamnama || []).map(item => item.line || item);
