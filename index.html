@@ -397,15 +397,16 @@
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Updated daily
-    const DAILY_SYNTHESIS = `God is the one doing everything — creating, speaking, giving understanding, resolving conflicts — and even your devotion to Him is His doing. Guru Ramdas says the one who lives in that truth keeps their goodness intact, even when others slander them.`;
-
     async function init() {
       try {
-        const res = await fetch(API);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderHukamnama(data, DAILY_SYNTHESIS);
+        const [hukamRes, synthRes] = await Promise.all([
+          fetch(API),
+          fetch('/api/synthesis').catch(() => null),
+        ]);
+        if (!hukamRes.ok) throw new Error(`HTTP ${hukamRes.status}`);
+        const data = await hukamRes.json();
+        const synthesis = synthRes?.ok ? (await synthRes.json()).synthesis : null;
+        renderHukamnama(data, synthesis);
       } catch (err) {
         renderError(err.message || 'Network error');
       }
