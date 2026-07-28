@@ -125,7 +125,7 @@ export default async function handler(req, res) {
         token: process.env.KV_REST_API_TOKEN,
       });
       const latest = await redis.get('hukamnama:latest');
-      if (latest) return res.json(latest);
+      if (latest) return res.json({ ...latest, stale: true });
     } catch (_) {}
     res.status(500).json({ error: err.message });
   }

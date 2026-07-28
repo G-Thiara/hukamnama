@@ -345,7 +345,7 @@
       document.getElementById('app').innerHTML = `<div class="error">${msg}</div>`;
     }
 
-    function renderHukamnama(data, synthesis) {
+    function renderHukamnama(data, synthesis, stale) {
       const rawLines = data.hukamnama || [];
       if (!rawLines.length) { renderError('No lines found.'); return; }
 
@@ -361,6 +361,7 @@
           <div class="essence fade-in">
             <div class="essence-label">Essence</div>
             <p class="essence-text">${escHtml(synthesis)}</p>
+            ${stale ? `<p style="margin-top:1rem;font-size:0.75rem;color:var(--muted);font-family:'EB Garamond',serif;letter-spacing:0.03em">Today's Hukamnama is on its way — showing yesterday's in the meantime.</p>` : ''}
           </div>`;
       }
 
@@ -402,8 +403,8 @@
         // Try the single API endpoint first (returns both hukamnama + synthesis)
         const synthRes = await fetch('/api/synthesis').catch(() => null);
         if (synthRes?.ok) {
-          const { synthesis, hukamnama } = await synthRes.json();
-          renderHukamnama(hukamnama, synthesis);
+          const { synthesis, hukamnama, stale } = await synthRes.json();
+          renderHukamnama(hukamnama, synthesis, stale);
           return;
         }
         // Fallback: fetch hukamnama directly, no synthesis
