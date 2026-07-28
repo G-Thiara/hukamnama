@@ -5,6 +5,10 @@
   "framework": null,
   "rewrites": [
     { "source": "/api/synthesis", "destination": "/api/synthesis.js" },
+    { "source": "/api/warm", "destination": "/api/warm.js" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/warm", "schedule": "30 0 * * *" }
   ]
 }
