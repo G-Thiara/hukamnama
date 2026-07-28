@@ -9,6 +9,6 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/warm", "schedule": "30 0 * * *" }
+    { "path": "/api/warm", "schedule": "30 3 * * *" }
   ]
 }
