@@ -355,6 +355,11 @@
 
       let html = '';
 
+      // Stale notice
+      if (stale) {
+        html += `<p style="text-align:center;font-size:1rem;color:var(--navy);opacity:0.6;letter-spacing:0.01em;margin-bottom:1.5rem;font-family:'EB Garamond',serif">Today's Hukamnama is on its way — showing yesterday's in the meantime.</p>`;
+      }
+
       // Essence
       if (synthesis) {
         html += `
