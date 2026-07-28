@@ -1,6 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-
-const HUKAMNAMA_API = 'https://api.gurbaninow.com/v2/hukamnama/today';
+import { Redis } from '@upstash/redis';
 
 const SYNTHESIS_PROMPT = (translations, writer, raag) =>
   `Today's Hukamnama is from Sri Guru Granth Sahib Ji${writer ? `, authored by ${writer}` : ''}${raag ? ` in ${raag}` : ''}.
@@ -37,27 +36,40 @@ Check it against these criteria:
 
 Reply with PASS if it meets all criteria, or FAIL: <specific reason> if it does not. Nothing else.`;
 
-let cache = { date: null, data: null };
+function getISTDate() {
+  const now = new Date();
+  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+  const ist = new Date(istMs);
+  const year  = ist.getUTCFullYear();
+  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const day   = String(ist.getUTCDate()).padStart(2, '0');
+  return { year, month, day, key: `hukamnama:${year}-${month}-${day}` };
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
-    const now = new Date();
-    const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
-    const ist = new Date(istMs);
-    const year  = ist.getUTCFullYear();
-    const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
-    const day   = String(ist.getUTCDate()).padStart(2, '0');
-    const today = `${year}-${month}-${day}`;
+    const { year, month, day, key } = getISTDate();
 
-    if (cache.date === today && cache.data) {
-      return res.json(cache.data);
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+
+    // Return cached response if available
+    const cached = await redis.get(key);
+    if (cached) {
+      return res.json(cached);
     }
+
+    // Fetch hukamnama
     const hukamRes = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${year}/${month}/${day}`);
     const hukamData = await hukamRes.json();
 
     const lines = (hukamData.hukamnama || []).map(item => item.line || item);
+    if (!lines.length) throw new Error('No hukamnama lines returned from GurbaniNow');
+
     const translations = lines
       .map(l => l?.translation?.english?.default || '')
       .filter(t => t && t.length > 20 && !/^(Salok|Pause|Pauree|Third Mehl|First Mehl|Fifth Mehl)/i.test(t))
@@ -76,9 +88,9 @@ export default async function handler(req, res) {
         messages: [{ role: 'user', content: SYNTHESIS_PROMPT(translations, writer, raag) }],
       });
       const candidate = msg.content[0].text
-        .replace(/^#+\s+.*/gm, '')  // strip markdown headings
-        .replace(/\*\*/g, '')        // strip bold
-        .replace(/\n+/g, ' ')        // collapse newlines
+        .replace(/^#+\s+.*/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/\n+/g, ' ')
         .trim();
 
       const review = await client.messages.create({
@@ -95,8 +107,12 @@ export default async function handler(req, res) {
       }
     }
 
-    cache = { date: today, data: { synthesis, hukamnama: hukamData } };
-    res.json({ synthesis, hukamnama: hukamData });
+    const data = { synthesis, hukamnama: hukamData };
+
+    // Cache for 26 hours (covers the full IST day with buffer)
+    await redis.set(key, data, { ex: 26 * 60 * 60 });
+
+    res.json(data);
 
   } catch (err) {
     console.error(err.message);
