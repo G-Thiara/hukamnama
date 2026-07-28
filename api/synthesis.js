@@ -111,11 +111,22 @@ export default async function handler(req, res) {
 
     // Cache for 26 hours (covers the full IST day with buffer)
     await redis.set(key, data, { ex: 26 * 60 * 60 });
+    // Always keep a latest key as fallback
+    await redis.set('hukamnama:latest', data, { ex: 48 * 60 * 60 });
 
     res.json(data);
 
   } catch (err) {
     console.error(err.message);
+    // Try returning yesterday's cached data before giving up
+    try {
+      const redis = new Redis({
+        url: process.env.KV_REST_API_URL,
+        token: process.env.KV_REST_API_TOKEN,
+      });
+      const latest = await redis.get('hukamnama:latest');
+      if (latest) return res.json(latest);
+    } catch (_) {}
     res.status(500).json({ error: err.message });
   }
 }
