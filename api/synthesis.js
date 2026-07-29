@@ -63,23 +63,10 @@ export default async function handler(req, res) {
       return res.json(cached);
     }
 
-    // Fetch hukamnama — if today's isn't published yet, fall back to yesterday
-    let hukamData = null;
-    let stale = false;
-    for (const offset of [0, -1]) {
-      const d = new Date(ist);
-      d.setUTCDate(d.getUTCDate() + offset);
-      const y = d.getUTCFullYear();
-      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const dd = String(d.getUTCDate()).padStart(2, '0');
-      const r = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${y}/${m}/${dd}`);
-      const data = await r.json();
-      if ((data.hukamnama || []).length > 0) {
-        hukamData = data;
-        if (offset < 0) stale = true;
-        break;
-      }
-    }
+    // Fetch hukamnama using /today — GurbaniNow serves based on their IST clock
+    const hukamRes = await fetch('https://api.gurbaninow.com/v2/hukamnama/today');
+    const hukamData = await hukamRes.json();
+    const stale = false;
 
     const lines = (hukamData?.hukamnama || []).map(item => item.line || item);
     if (!lines.length) throw new Error('No hukamnama lines returned from GurbaniNow');

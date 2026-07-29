@@ -8,12 +8,12 @@ export default async function handler(req, res) {
     const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
     const day   = String(ist.getUTCDate()).padStart(2, '0');
 
-    const url = `https://api.gurbaninow.com/v2/hukamnama/${year}/${month}/${day}`;
+    const url = 'https://api.gurbaninow.com/v2/hukamnama/today';
     const hukamRes = await fetch(url);
     const hukamData = await hukamRes.json();
     const lines = (hukamData.hukamnama || []).map(item => item.line || item);
 
-    res.json({ url, linesCount: lines.length, istDate: `${year}-${month}-${day}`, error: hukamData.error });
+    res.json({ url, linesCount: lines.length, istDate: `${year}-${month}-${day}`, date: hukamData.date?.gregorian, error: hukamData.error });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
