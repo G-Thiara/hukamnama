@@ -6,6 +6,7 @@
   "rewrites": [
     { "source": "/api/synthesis", "destination": "/api/synthesis.js" },
     { "source": "/api/warm", "destination": "/api/warm.js" },
+    { "source": "/api/debug", "destination": "/api/debug.js" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
