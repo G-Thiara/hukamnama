@@ -402,16 +402,26 @@
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    async function fetchWithRetry(url, attempts = 3) {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) return res;
+        } catch (_) {}
+        if (i < attempts - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      }
+      return null;
+    }
+
     async function init() {
       try {
-        // Try the single API endpoint first (returns both hukamnama + synthesis)
-        const synthRes = await fetch('/api/synthesis').catch(() => null);
-        if (synthRes?.ok) {
+        const synthRes = await fetchWithRetry('/api/synthesis');
+        if (synthRes) {
           const { synthesis, hukamnama, stale } = await synthRes.json();
           renderHukamnama(hukamnama, synthesis, stale);
           return;
         }
-        // Fallback: fetch hukamnama directly, no synthesis
+        // All retries failed — fetch hukamnama directly, no synthesis
         const res = await fetch(API);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
