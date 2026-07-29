@@ -63,11 +63,25 @@ export default async function handler(req, res) {
       return res.json(cached);
     }
 
-    // Fetch hukamnama
-    const hukamRes = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${year}/${month}/${day}`);
-    const hukamData = await hukamRes.json();
+    // Fetch hukamnama — if today's isn't published yet, fall back to yesterday
+    let hukamData = null;
+    let stale = false;
+    for (const offset of [0, -1]) {
+      const d = new Date(ist);
+      d.setUTCDate(d.getUTCDate() + offset);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      const r = await fetch(`https://api.gurbaninow.com/v2/hukamnama/${y}/${m}/${dd}`);
+      const data = await r.json();
+      if ((data.hukamnama || []).length > 0) {
+        hukamData = data;
+        if (offset < 0) stale = true;
+        break;
+      }
+    }
 
-    const lines = (hukamData.hukamnama || []).map(item => item.line || item);
+    const lines = (hukamData?.hukamnama || []).map(item => item.line || item);
     if (!lines.length) throw new Error('No hukamnama lines returned from GurbaniNow');
 
     const translations = lines
@@ -107,7 +121,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const data = { synthesis, hukamnama: hukamData };
+    const data = { synthesis, hukamnama: hukamData, stale };
 
     // Cache for 26 hours (covers the full IST day with buffer)
     await redis.set(key, data, { ex: 26 * 60 * 60 });
