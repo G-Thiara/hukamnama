@@ -7,6 +7,10 @@ All notable changes to gurudahukam.com are recorded here.
 ## [Unreleased]
 - Twitter/X bot to post daily essence
 
+## [1.6.1] — 2026-08-06
+### Fixed
+- Cron failed silently with no logs — added detailed step-by-step logging to `api/warm.js` so failures are visible in Vercel logs
+
 ---
 
 ## [1.6.0] — 2026-08-06
