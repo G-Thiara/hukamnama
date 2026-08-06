@@ -8,6 +8,7 @@
     { "source": "/api/warm", "destination": "/api/warm.js" },
     { "source": "/api/debug", "destination": "/api/debug.js" },
     { "source": "/api/archive", "destination": "/api/archive.js" },
+    { "source": "/archive", "destination": "/archive.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
