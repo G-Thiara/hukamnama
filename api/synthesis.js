@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { Redis } from '@upstash/redis';
 
 const SYNTHESIS_PROMPT = (translations, writer, raag) =>
@@ -35,6 +36,39 @@ Check it against these criteria:
 5. Is each sentence simple — one idea, readable without re-reading?
 
 Reply with PASS if it meets all criteria, or FAIL: <specific reason> if it does not. Nothing else.`;
+
+const GPT_REVIEW_PROMPT = (translations, writer, raag, synthesis) =>
+  `You are an independent reviewer checking a short AI-generated summary ("synthesis") of today's Hukamnama — a passage randomly opened from the Sikh scripture Sri Guru Granth Sahib Ji — before it is published to a public website and WhatsApp channel. Because this touches religious scripture, doctrinal accuracy and respectfulness matter as much as clarity.
+
+Source: Sri Guru Granth Sahib Ji${writer ? `, authored by ${writer}` : ''}${raag ? ` in ${raag}` : ''}
+
+English translation of the verses:
+${translations}
+
+Generated synthesis:
+"${synthesis}"
+
+Evaluate the synthesis strictly against these criteria:
+1. Faithfulness — synthesizes the whole shabad, not just one line
+2. Spirit over literalism — captures the essence without being a flat literal translation, and without inventing meaning that isn't in the text
+3. Doctrinal accuracy — does not misstate or misattribute any teaching in a way a knowledgeable Sikh reader would consider wrong
+4. Respectful, neutral tone — does not editorialize, take a denominational stance, or trivialize the content
+5. Clarity — understandable to someone with no background in Sikhism, with Sikh terms explained in plain language
+
+Respond with ONLY a JSON object, no other text, in this exact shape:
+{"verdict": "PASS" or "FAIL", "doctrinal_concerns": [array of specific strings, empty if none], "stylistic_concerns": [array of specific strings, empty if none], "summary": "one sentence overall judgment"}
+
+FAIL only for real, specific concerns tied to the criteria above — do not fail on vague unease.`;
+
+async function reviewWithGPT({ translations, writer, raag, synthesis }) {
+  const openai = new OpenAI();
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4.1',
+    response_format: { type: 'json_object' },
+    messages: [{ role: 'user', content: GPT_REVIEW_PROMPT(translations, writer, raag, synthesis) }],
+  });
+  return JSON.parse(completion.choices[0].message.content);
+}
 
 function getISTDate() {
   const now = new Date();
@@ -109,6 +143,33 @@ export default async function handler(req, res) {
     }
 
     const data = { synthesis, hukamnama: hukamData, stale };
+
+    // Independent second-model check (GPT, not Claude) BEFORE caching/publishing.
+    // A genuine FAIL blocks this synthesis from being cached — the outer catch below
+    // will serve yesterday's stale content instead. A checker ERROR (OpenAI unreachable,
+    // bad JSON, etc.) fails open and publishes anyway — an infra hiccup on the checker
+    // isn't a content problem, and Claude's own self-review above is still the baseline.
+    // Either way the verdict is stored permanently for later review via /api/reviews.
+    const reviewKey = `hukamnama:review:${year}-${month}-${day}`;
+    try {
+      const review = await reviewWithGPT({ translations, writer, raag, synthesis });
+      review.checkedAt = new Date().toISOString();
+      review.model = 'gpt-4.1';
+      await redis.set(reviewKey, review);
+
+      if (review.verdict === 'FAIL') {
+        console.error(`[gpt-review] FAIL for ${year}-${month}-${day} — blocking publish:`, JSON.stringify(review));
+        throw new Error(`GPT review failed: ${review.summary || 'see /api/reviews'}`);
+      }
+    } catch (reviewErr) {
+      if (reviewErr.message?.startsWith('GPT review failed')) throw reviewErr;
+      console.error('[gpt-review] error (failing open):', reviewErr.message);
+      await redis.set(reviewKey, {
+        verdict: 'ERROR',
+        error: reviewErr.message,
+        checkedAt: new Date().toISOString(),
+      });
+    }
 
     // Cache for 26 hours (covers the full IST day with buffer)
     await redis.set(key, data, { ex: 26 * 60 * 60 });
