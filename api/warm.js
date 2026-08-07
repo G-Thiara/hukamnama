@@ -30,9 +30,9 @@ function formatEmailHtml(synthesis, hukamnama, email, unsubToken, protocol, host
       <div style="border-top:1px solid rgba(28,20,16,0.08);border-bottom:1px solid rgba(28,20,16,0.08);padding:1.5rem 0;text-align:center">
         <p style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:400;font-size:1.25rem;line-height:1.7;color:#1C1410;margin:0">${escHtml(synthesis)}</p>
       </div>
-      <p style="text-align:center;margin-top:1.6rem;font-size:0.85rem">Read the Hukamnama at <a href="${protocol}://${host}" style="color:#A84E06">www.gurudahukam.com</a></p>
-      <p style="text-align:center;margin-top:2.2rem;font-size:0.68rem;letter-spacing:0.02em;color:rgba(28,20,16,0.4)">AI-generated. Not a scholarly interpretation.<br/>
-      <a href="${unsubUrl}" style="color:rgba(28,20,16,0.4)">Unsubscribe</a></p>
+      <p style="text-align:center;margin-top:1.6rem;font-size:0.7rem;letter-spacing:0.02em;color:rgba(28,20,16,0.4)">AI-generated. Not a scholarly interpretation.</p>
+      <p style="text-align:center;margin-top:0.9rem;font-size:0.78rem;color:rgba(28,20,16,0.55)">Read the Hukamnama at <a href="${protocol}://${host}" style="color:#A84E06">www.gurudahukam.com</a></p>
+      <p style="text-align:center;margin-top:1.3rem;font-size:0.7rem;letter-spacing:0.02em;color:rgba(28,20,16,0.4)"><a href="${unsubUrl}" style="color:rgba(28,20,16,0.4)">Unsubscribe</a></p>
     </div>`;
 }
 
