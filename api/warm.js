@@ -1,4 +1,38 @@
 import { Redis } from '@upstash/redis';
+import { TwitterApi } from 'twitter-api-v2';
+
+function formatTweet(synthesis, hukamnama) {
+  const g = hukamnama?.date?.gregorian;
+  const dateStr = (g?.month && g?.date) ? `${g.month} ${g.date}` : '';
+  const header = dateStr ? `Hukamnama Essence — ${dateStr}` : 'Hukamnama Essence';
+  return `${header}\n\n${synthesis}\n\nRead today's full Hukamnama → https://www.gurudahukam.com`;
+}
+
+// Posts to X once per IST day, gated on its own Redis flag (independent of the
+// synthesis cache) so this cron's second daily run can retry a failed first attempt.
+async function postToXIfNeeded({ redis, year, month, day, synthesis, hukamnama, log }) {
+  const postedKey = `x:posted:${year}-${month}-${day}`;
+  const alreadyPosted = await redis.get(postedKey);
+  if (alreadyPosted) {
+    log.push('X: already posted today — skipping');
+    return;
+  }
+  try {
+    const client = new TwitterApi({
+      appKey: process.env.X_API_KEY,
+      appSecret: process.env.X_API_SECRET,
+      accessToken: process.env.X_ACCESS_TOKEN,
+      accessSecret: process.env.X_ACCESS_TOKEN_SECRET,
+    });
+    const text = formatTweet(synthesis, hukamnama);
+    const { data } = await client.v2.tweet(text);
+    await redis.set(postedKey, { tweetId: data.id, postedAt: new Date().toISOString() });
+    log.push(`X: posted (tweet ${data.id})`);
+  } catch (err) {
+    log.push(`X: post failed — ${err.message}`);
+    console.error('[warm][x]', err.message);
+  }
+}
 
 export default async function handler(req, res) {
   const log = [];
@@ -17,10 +51,13 @@ export default async function handler(req, res) {
       token: process.env.KV_REST_API_TOKEN,
     });
 
-    // If cache already exists for today, skip — nothing to do
+    // If cache already exists for today, skip the expensive regeneration — but this
+    // cron runs twice a day, so still check whether today's X post still needs to
+    // happen (covers a failed first attempt getting a second try at the next run).
     const existing = await redis.get(key);
     if (existing && !req.query.force) {
-      log.push('Cache already fresh — skipping');
+      log.push('Cache already fresh — skipping regeneration');
+      await postToXIfNeeded({ redis, year, month, day, synthesis: existing.synthesis, hukamnama: existing.hukamnama, log });
       console.log('[warm]', log.join(' | '));
       return res.json({ ok: true, skipped: true, log });
     }
@@ -53,6 +90,13 @@ export default async function handler(req, res) {
 
     log.push(`Synthesis OK — date: ${synthData.hukamnama?.date?.gregorian?.date} ${synthData.hukamnama?.date?.gregorian?.month}`);
     log.push(`Synthesis preview: ${synthData.synthesis?.slice(0, 80)}`);
+
+    if (synthData.stale) {
+      log.push('Synthesis is stale (GPT review failed or generation error) — not posting to X');
+    } else {
+      await postToXIfNeeded({ redis, year, month, day, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, log });
+    }
+
     console.log('[warm]', log.join(' | '));
     res.json({ ok: true, log });
 
