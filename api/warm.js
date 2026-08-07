@@ -5,7 +5,7 @@ function formatTweet(synthesis, hukamnama) {
   const g = hukamnama?.date?.gregorian;
   const dateStr = (g?.month && g?.date) ? `${g.month} ${g.date}` : '';
   const header = dateStr ? `Hukamnama Essence — ${dateStr}` : 'Hukamnama Essence';
-  return `${header}\n\n${synthesis}\n\nRead today's full Hukamnama → https://www.gurudahukam.com`;
+  return `${header}\n\n${synthesis}\n\nAI-generated. Not a scholarly interpretation.\n\nRead the Hukamnama at www.gurudahukam.com`;
 }
 
 // Posts to X once per IST day, gated on its own Redis flag (independent of the
