@@ -6,14 +6,18 @@
   "rewrites": [
     { "source": "/api/synthesis", "destination": "/api/synthesis.js" },
     { "source": "/api/warm", "destination": "/api/warm.js" },
+    { "source": "/api/warm-log", "destination": "/api/warm-log.js" },
     { "source": "/api/debug", "destination": "/api/debug.js" },
     { "source": "/api/archive", "destination": "/api/archive.js" },
     { "source": "/api/reviews", "destination": "/api/reviews.js" },
+    { "source": "/api/subscribe", "destination": "/api/subscribe.js" },
+    { "source": "/api/confirm", "destination": "/api/confirm.js" },
+    { "source": "/api/unsubscribe", "destination": "/api/unsubscribe.js" },
     { "source": "/archive", "destination": "/archive.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/warm", "schedule": "30 3 * * *" },
-    { "path": "/api/warm", "schedule": "30 6 * * *" }
+    { "path": "/api/warm", "schedule": "30 4 * * *" },
+    { "path": "/api/warm", "schedule": "30 7 * * *" }
   ]
 }

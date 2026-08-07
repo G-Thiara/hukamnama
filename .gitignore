@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.local
+.vercel
+PROJECT_STORY.md
+.claude/

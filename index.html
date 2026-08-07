@@ -166,6 +166,65 @@
       text-align: center;
     }
 
+    /* ── Subscribe ── */
+    .subscribe {
+      margin-top: 1.4rem;
+      padding: 1.6rem 0;
+      border-top: 1px solid var(--rule);
+      text-align: center;
+    }
+
+    .subscribe-label {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.75;
+      margin-bottom: 0.9rem;
+    }
+
+    .subscribe-form {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .subscribe-form input[type="email"] {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.9rem;
+      padding: 0.55rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: transparent;
+      color: var(--text);
+      min-width: 220px;
+    }
+
+    .subscribe-form input[type="email"]:focus { outline: 1px solid var(--saffron); }
+
+    .subscribe-form button {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      padding: 0.55rem 1.1rem;
+      border: 1px solid var(--saffron);
+      border-radius: 3px;
+      background: transparent;
+      color: var(--saffron);
+      cursor: pointer;
+    }
+
+    .subscribe-form button:hover { background: var(--saffron); color: var(--bg); }
+    .subscribe-form button:disabled { opacity: 0.5; cursor: default; }
+
+    .subscribe-message {
+      margin-top: 0.7rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
     /* ── Footer ── */
     footer {
       text-align: center;
@@ -251,6 +310,15 @@
         <div class="spinner"></div>
         <span>Loading…</span>
       </div>
+    </div>
+
+    <div class="subscribe">
+      <p class="subscribe-label">Get the essence by email, every morning</p>
+      <form class="subscribe-form" id="subscribe-form">
+        <input type="email" id="subscribe-email" placeholder="you@example.com" required />
+        <button type="submit" id="subscribe-submit">Subscribe</button>
+      </form>
+      <p class="subscribe-message" id="subscribe-message"></p>
     </div>
 
     <footer>
@@ -398,6 +466,50 @@
     }
 
     init();
+
+    const prefillEmail = new URLSearchParams(window.location.search).get('email');
+    if (prefillEmail) {
+      document.getElementById('subscribe-email').value = prefillEmail;
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    document.getElementById('subscribe-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const emailInput = document.getElementById('subscribe-email');
+      const button = document.getElementById('subscribe-submit');
+      const message = document.getElementById('subscribe-message');
+      const email = emailInput.value.trim();
+      if (!email) return;
+
+      button.disabled = true;
+      message.textContent = '';
+      let res;
+      try {
+        res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+      } catch (err) {
+        message.textContent = "Couldn't reach the server. Check your internet connection and try again.";
+        button.disabled = false;
+        return;
+      }
+
+      try {
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          message.textContent = data.message;
+          emailInput.value = '';
+        } else {
+          message.textContent = data.error || `Something went wrong on our end (error ${res.status}). Try again.`;
+        }
+      } catch (err) {
+        message.textContent = `The server sent back something unexpected (error ${res.status}). Try again.`;
+      } finally {
+        button.disabled = false;
+      }
+    });
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
 </body>
