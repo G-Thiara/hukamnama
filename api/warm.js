@@ -50,7 +50,7 @@ function contentDateKey(hukamnama) {
 // Sends the daily digest once per Hukamnama date, gated on its own Redis flag —
 // mirrors postToXIfNeeded so a failed first attempt gets retried on this cron's
 // second run.
-async function sendEmailDigestIfNeeded({ redis, synthesis, hukamnama, protocol, host, log }) {
+async function sendEmailDigestIfNeeded({ redis, synthesis, hukamnama, protocol, host, log, forceResend }) {
   const dateKey = contentDateKey(hukamnama);
   if (!dateKey) {
     log.push('Email: missing date on content — skipping');
@@ -58,9 +58,12 @@ async function sendEmailDigestIfNeeded({ redis, synthesis, hukamnama, protocol, 
   }
   const sentKey = `email:sent:${dateKey}`;
   const alreadySent = await redis.get(sentKey);
-  if (alreadySent) {
+  if (alreadySent && !forceResend) {
     log.push(`Email: already sent for ${dateKey} — skipping`);
     return;
+  }
+  if (alreadySent && forceResend) {
+    log.push(`Email: forcing resend for ${dateKey} despite existing sent flag`);
   }
   const subscribers = await redis.hgetall('email:subscribers');
   const emails = Object.keys(subscribers || {});
@@ -157,6 +160,7 @@ export default async function handler(req, res) {
 
     const host = req.headers.host || 'www.gurudahukam.com';
     const protocol = host.includes('localhost') ? 'http' : 'https';
+    const forceResend = req.query.resendEmail === 'true';
 
     // If cache already exists for today, skip the expensive regeneration — but this
     // cron runs twice a day, so still check whether today's X post/email still needs
@@ -165,7 +169,7 @@ export default async function handler(req, res) {
     if (existing && !req.query.force) {
       log.push('Cache already fresh — skipping regeneration');
       await postToXIfNeeded({ redis, synthesis: existing.synthesis, hukamnama: existing.hukamnama, log });
-      await sendEmailDigestIfNeeded({ redis, synthesis: existing.synthesis, hukamnama: existing.hukamnama, protocol, host, log });
+      await sendEmailDigestIfNeeded({ redis, synthesis: existing.synthesis, hukamnama: existing.hukamnama, protocol, host, log, forceResend });
       console.log('[warm]', log.join(' | '));
       await persistRun({ redis, ok: true, log });
       return res.json({ ok: true, skipped: true, log });
@@ -207,7 +211,7 @@ export default async function handler(req, res) {
     // dedup on the content's own date, so this either posts genuinely new content
     // or safely no-ops on a repeat — never silently skips a day.
     await postToXIfNeeded({ redis, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, log });
-    await sendEmailDigestIfNeeded({ redis, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, protocol, host, log });
+    await sendEmailDigestIfNeeded({ redis, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, protocol, host, log, forceResend });
 
     console.log('[warm]', log.join(' | '));
     await persistRun({ redis, ok: true, log });
