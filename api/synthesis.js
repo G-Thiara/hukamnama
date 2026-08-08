@@ -105,16 +105,20 @@ export default async function handler(req, res) {
     const lines = (hukamData?.hukamnama || []).map(item => item.line || item);
     if (!lines.length) throw new Error('No hukamnama lines returned from GurbaniNow');
 
-    // GurbaniNow's /today endpoint occasionally lags — still serving yesterday's
+    // GurbaniNow's /today endpoint occasionally lags — still serving an older
     // Hukamnama after our IST clock has already rolled to the next day. Caching
-    // that would publish the wrong day's reading under today's date. Treat a
-    // date mismatch the same as any other generation failure: throw, so the
-    // outer catch below serves yesterday's still-valid cache (stale: true)
-    // instead, and the next cron run retries from scratch.
+    // that would publish stale content under today's date. Rather than requiring
+    // an exact match to today (which would permanently reject content that's
+    // still behind once our clock moves past it — never recovering, no matter
+    // how long the lag), only require that it be newer than whatever we last
+    // had. That guarantees any lag only delays a day's reading, never loses it.
     const g = hukamData?.date?.gregorian;
-    const isTodayIST = g && g.year === year && g.monthno === Number(month) && g.date === Number(day);
-    if (!isTodayIST) {
-      throw new Error(`Upstream date mismatch: GurbaniNow returned ${g?.year}-${g?.monthno}-${g?.date}, expected ${year}-${month}-${day} (source likely not updated yet)`);
+    const fetchedDateNum = g?.year && g?.monthno && g?.date ? Date.UTC(g.year, g.monthno - 1, g.date) : null;
+    const latest = await redis.get('hukamnama:latest');
+    const lg = latest?.hukamnama?.date?.gregorian;
+    const latestDateNum = lg?.year && lg?.monthno && lg?.date ? Date.UTC(lg.year, lg.monthno - 1, lg.date) : -Infinity;
+    if (fetchedDateNum === null || fetchedDateNum <= latestDateNum) {
+      throw new Error(`Upstream not showing new content yet: got ${g?.year}-${g?.monthno}-${g?.date}, already have ${lg?.year}-${lg?.monthno}-${lg?.date}`);
     }
 
     const translations = lines

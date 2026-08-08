@@ -36,13 +36,30 @@ function formatEmailHtml(synthesis, hukamnama, email, unsubToken, protocol, host
     </div>`;
 }
 
-// Sends the daily digest once per IST day, gated on its own Redis flag — mirrors
-// postToXIfNeeded so a failed first attempt gets retried on this cron's second run.
-async function sendEmailDigestIfNeeded({ redis, year, month, day, synthesis, hukamnama, protocol, host, log }) {
-  const sentKey = `email:sent:${year}-${month}-${day}`;
+// Keys dedup off the Hukamnama's own date, not our IST wall-clock date — so if
+// GurbaniNow serves yesterday's reading during today's run, it's recognized as
+// "already posted" (no duplicate) without permanently marking today as done.
+// Whenever today's real reading does show up, it's still genuinely unposted
+// and goes out then, however late. No day is silently skipped, only delayed.
+function contentDateKey(hukamnama) {
+  const g = hukamnama?.date?.gregorian;
+  if (!g?.year || !g?.monthno || !g?.date) return null;
+  return `${g.year}-${String(g.monthno).padStart(2, '0')}-${String(g.date).padStart(2, '0')}`;
+}
+
+// Sends the daily digest once per Hukamnama date, gated on its own Redis flag —
+// mirrors postToXIfNeeded so a failed first attempt gets retried on this cron's
+// second run.
+async function sendEmailDigestIfNeeded({ redis, synthesis, hukamnama, protocol, host, log }) {
+  const dateKey = contentDateKey(hukamnama);
+  if (!dateKey) {
+    log.push('Email: missing date on content — skipping');
+    return;
+  }
+  const sentKey = `email:sent:${dateKey}`;
   const alreadySent = await redis.get(sentKey);
   if (alreadySent) {
-    log.push('Email: already sent today — skipping');
+    log.push(`Email: already sent for ${dateKey} — skipping`);
     return;
   }
   const subscribers = await redis.hgetall('email:subscribers');
@@ -69,20 +86,26 @@ async function sendEmailDigestIfNeeded({ redis, year, month, day, synthesis, huk
       await resend.batch.send(batch.slice(i, i + 100));
     }
     await redis.set(sentKey, { count: emails.length, sentAt: new Date().toISOString() });
-    log.push(`Email: sent to ${emails.length} subscriber(s)`);
+    log.push(`Email: sent to ${emails.length} subscriber(s) for ${dateKey}`);
   } catch (err) {
     log.push(`Email: send failed — ${err.message}`);
     console.error('[warm][email]', err.message);
   }
 }
 
-// Posts to X once per IST day, gated on its own Redis flag (independent of the
-// synthesis cache) so this cron's second daily run can retry a failed first attempt.
-async function postToXIfNeeded({ redis, year, month, day, synthesis, hukamnama, log }) {
-  const postedKey = `x:posted:${year}-${month}-${day}`;
+// Posts to X once per Hukamnama date, gated on its own Redis flag (independent
+// of the synthesis cache) so this cron's second daily run can retry a failed
+// first attempt.
+async function postToXIfNeeded({ redis, synthesis, hukamnama, log }) {
+  const dateKey = contentDateKey(hukamnama);
+  if (!dateKey) {
+    log.push('X: missing date on content — skipping');
+    return;
+  }
+  const postedKey = `x:posted:${dateKey}`;
   const alreadyPosted = await redis.get(postedKey);
   if (alreadyPosted) {
-    log.push('X: already posted today — skipping');
+    log.push(`X: already posted for ${dateKey} — skipping`);
     return;
   }
   try {
@@ -95,7 +118,7 @@ async function postToXIfNeeded({ redis, year, month, day, synthesis, hukamnama, 
     const text = formatTweet(synthesis, hukamnama);
     const { data } = await client.v2.tweet(text);
     await redis.set(postedKey, { tweetId: data.id, postedAt: new Date().toISOString() });
-    log.push(`X: posted (tweet ${data.id})`);
+    log.push(`X: posted for ${dateKey} (tweet ${data.id})`);
   } catch (err) {
     log.push(`X: post failed — ${err.message}`);
     console.error('[warm][x]', err.message);
@@ -141,8 +164,8 @@ export default async function handler(req, res) {
     const existing = await redis.get(key);
     if (existing && !req.query.force) {
       log.push('Cache already fresh — skipping regeneration');
-      await postToXIfNeeded({ redis, year, month, day, synthesis: existing.synthesis, hukamnama: existing.hukamnama, log });
-      await sendEmailDigestIfNeeded({ redis, year, month, day, synthesis: existing.synthesis, hukamnama: existing.hukamnama, protocol, host, log });
+      await postToXIfNeeded({ redis, synthesis: existing.synthesis, hukamnama: existing.hukamnama, log });
+      await sendEmailDigestIfNeeded({ redis, synthesis: existing.synthesis, hukamnama: existing.hukamnama, protocol, host, log });
       console.log('[warm]', log.join(' | '));
       await persistRun({ redis, ok: true, log });
       return res.json({ ok: true, skipped: true, log });
@@ -168,7 +191,7 @@ export default async function handler(req, res) {
     log.push(`Synthesis preview: ${synthData.synthesis?.slice(0, 80)}`);
 
     if (synthData.stale) {
-      log.push('Synthesis is stale (GPT review failed, generation error, or upstream not updated yet) — not archiving, not posting to X or email');
+      log.push('Synthesis is stale (GPT review failed, generation error, or upstream not updated yet) — not archiving under today\'s date');
     } else {
       // Store in permanent archive (no expiry) — only once we know this is genuinely today's reading
       const archiveKey = `archive:${year}-${month}-${day}`;
@@ -178,10 +201,13 @@ export default async function handler(req, res) {
         hukamnama: synthData.hukamnama,
       });
       log.push(`Archived as ${archiveKey}`);
-
-      await postToXIfNeeded({ redis, year, month, day, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, log });
-      await sendEmailDigestIfNeeded({ redis, year, month, day, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, protocol, host, log });
     }
+
+    // Independent of whether this matches today's wall-clock date: X and email
+    // dedup on the content's own date, so this either posts genuinely new content
+    // or safely no-ops on a repeat — never silently skips a day.
+    await postToXIfNeeded({ redis, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, log });
+    await sendEmailDigestIfNeeded({ redis, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, protocol, host, log });
 
     console.log('[warm]', log.join(' | '));
     await persistRun({ redis, ok: true, log });
