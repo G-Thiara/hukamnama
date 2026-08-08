@@ -105,6 +105,18 @@ export default async function handler(req, res) {
     const lines = (hukamData?.hukamnama || []).map(item => item.line || item);
     if (!lines.length) throw new Error('No hukamnama lines returned from GurbaniNow');
 
+    // GurbaniNow's /today endpoint occasionally lags — still serving yesterday's
+    // Hukamnama after our IST clock has already rolled to the next day. Caching
+    // that would publish the wrong day's reading under today's date. Treat a
+    // date mismatch the same as any other generation failure: throw, so the
+    // outer catch below serves yesterday's still-valid cache (stale: true)
+    // instead, and the next cron run retries from scratch.
+    const g = hukamData?.date?.gregorian;
+    const isTodayIST = g && g.year === year && g.monthno === Number(month) && g.date === Number(day);
+    if (!isTodayIST) {
+      throw new Error(`Upstream date mismatch: GurbaniNow returned ${g?.year}-${g?.monthno}-${g?.date}, expected ${year}-${month}-${day} (source likely not updated yet)`);
+    }
+
     const translations = lines
       .map(l => l?.translation?.english?.default || '')
       .filter(t => t && t.length > 20 && !/^(Salok|Pause|Pauree|Third Mehl|First Mehl|Fifth Mehl)/i.test(t))

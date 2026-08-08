@@ -164,21 +164,21 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, log, error: synthData.error });
     }
 
-    // Store in permanent archive (no expiry)
-    const archiveKey = `archive:${year}-${month}-${day}`;
-    await redis.set(archiveKey, {
-      date: `${year}-${month}-${day}`,
-      synthesis: synthData.synthesis,
-      hukamnama: synthData.hukamnama,
-    });
-    log.push(`Archived as ${archiveKey}`);
-
-    log.push(`Synthesis OK — date: ${synthData.hukamnama?.date?.gregorian?.date} ${synthData.hukamnama?.date?.gregorian?.month}`);
+    log.push(`Synthesis result — date: ${synthData.hukamnama?.date?.gregorian?.date} ${synthData.hukamnama?.date?.gregorian?.month}`);
     log.push(`Synthesis preview: ${synthData.synthesis?.slice(0, 80)}`);
 
     if (synthData.stale) {
-      log.push('Synthesis is stale (GPT review failed or generation error) — not posting to X or email');
+      log.push('Synthesis is stale (GPT review failed, generation error, or upstream not updated yet) — not archiving, not posting to X or email');
     } else {
+      // Store in permanent archive (no expiry) — only once we know this is genuinely today's reading
+      const archiveKey = `archive:${year}-${month}-${day}`;
+      await redis.set(archiveKey, {
+        date: `${year}-${month}-${day}`,
+        synthesis: synthData.synthesis,
+        hukamnama: synthData.hukamnama,
+      });
+      log.push(`Archived as ${archiveKey}`);
+
       await postToXIfNeeded({ redis, year, month, day, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, log });
       await sendEmailDigestIfNeeded({ redis, year, month, day, synthesis: synthData.synthesis, hukamnama: synthData.hukamnama, protocol, host, log });
     }
